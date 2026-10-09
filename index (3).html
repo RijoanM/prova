@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stanza Chat</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --fg: #1b1f27;
+    --muted: #6a7282;
+    --line: #dde1e8;
+    --accent: #2457d6;
+    --accent-fg: #ffffff;
+    --mine: #e3ebff;
+    --theirs: #eceef3;
+    --danger: #c0392b;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1218; --panel: #171b23; --fg: #e8ebf1; --muted: #8b94a5;
+      --line: #2a303b; --accent: #6b93ff; --accent-fg: #0c1020;
+      --mine: #223056; --theirs: #222833; --danger: #ff7b6b;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .screen { height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .card {
+    width: 100%; max-width: 420px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px; padding: 24px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  p.sub { margin: 0; color: var(--muted); }
+  label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: block; margin-bottom: 6px; }
+  input {
+    width: 100%; padding: 11px 12px; font: inherit; color: var(--fg);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #codeInput { text-transform: uppercase; letter-spacing: 0.25em; text-align: center; font-size: 18px; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; padding: 11px 14px;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .row { display: flex; gap: 8px; }
+  .row > * { min-width: 0; }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .error { color: var(--danger); min-height: 1.4em; margin: 0; font-size: 14px; }
+
+  #chat { display: none; height: 100%; flex-direction: column; max-width: 760px; margin: 0 auto; background: var(--panel); border-inline: 1px solid var(--line); }
+  header.bar {
+    padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .roomcode { font-size: 20px; font-weight: 700; letter-spacing: 0.18em; }
+  .bar .meta { color: var(--muted); font-size: 13px; flex: 1; min-width: 120px; }
+  .bar button { padding: 7px 10px; font-size: 13px; }
+  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 80%; padding: 8px 12px; border-radius: 10px; background: var(--theirs); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .msg.mine { align-self: flex-end; background: var(--mine); }
+  .msg .who { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+  .msg .time { font-size: 11px; color: var(--muted); margin-left: 8px; font-weight: 400; }
+  .sys { align-self: center; color: var(--muted); font-size: 13px; text-align: center; }
+  form#sendForm {
+    display: flex; gap: 8px; padding: 10px 16px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--line);
+  }
+  form#sendForm input { flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="screen" id="lobby">
+  <div class="card">
+    <div>
+      <h1>Stanza Chat</h1>
+      <p class="sub">Chat di solo testo. Si entra solo con il codice della stanza.</p>
+    </div>
+    <div>
+      <label for="nameInput">Il tuo nome</label>
+      <input id="nameInput" maxlength="24" autocomplete="nickname" placeholder="Es. Marco">
+    </div>
+    <button class="primary" id="createBtn">Crea una stanza</button>
+    <div class="divider">oppure entra con un codice</div>
+    <div>
+      <label for="codeInput">Codice stanza</label>
+      <input id="codeInput" class="mono" maxlength="6" autocomplete="off" placeholder="K7M2QX">
+    </div>
+    <button id="joinBtn">Entra</button>
+    <p class="error" id="lobbyError" role="alert"></p>
+  </div>
+</div>
+
+<div id="chat">
+  <header class="bar">
+    <span class="roomcode mono" id="roomCode"></span>
+    <button id="copyCode">Copia codice</button>
+    <button id="copyLink">Copia link</button>
+    <span class="meta" id="meta"></span>
+    <button id="leaveBtn">Esci</button>
+  </header>
+  <div id="messages" aria-live="polite"></div>
+  <form id="sendForm" autocomplete="off">
+    <input id="msgInput" maxlength="1000" placeholder="Scrivi un messaggio" aria-label="Messaggio">
+    <button class="primary" type="submit">Invia</button>
+  </form>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function () {
+  const PREFIX = "stanzachat-";           // cambia per rendere unico il tuo spazio di codici
+  const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // senza caratteri ambigui (0/O, 1/I)
+  const MAX_USERS = 20;
+
+  const $ = (id) => document.getElementById(id);
+  const lobby = $("lobby"), chat = $("chat"), messages = $("messages");
+
+  let peer = null;
+  let isHost = false;
+  let roomCode = "";
+  let myName = "";
+  let hostConn = null;            // lato ospite: connessione verso l'host
+  const guests = new Map();       // lato host: conn -> nome
+
+  /* ---------- utilità ---------- */
+  function cleanName(s) { return (s || "").replace(/\s+/g, " ").trim().slice(0, 24); }
+  function randomCode() {
+    let c = "";
+    const buf = new Uint32Array(6);
+    crypto.getRandomValues(buf);
+    for (let i = 0; i < 6; i++) c += ALPHABET[buf[i] % ALPHABET.length];
+    return c;
+  }
+  function showError(t) { $("lobbyError").textContent = t || ""; }
+  function setBusy(b) { $("createBtn").disabled = b; $("joinBtn").disabled = b; }
+  function hhmm(ts) { return new Date(ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }); }
+
+  function addSys(text) {
+    const d = document.createElement("div");
+    d.className = "sys"; d.textContent = text;
+    messages.appendChild(d); scroll();
+  }
+  function addMsg(name, text, ts, mine) {
+    const d = document.createElement("div");
+    d.className = "msg" + (mine ? " mine" : "");
+    const who = document.createElement("span");
+    who.className = "who"; who.textContent = mine ? "Tu" : name;
+    const t = document.createElement("span");
+    t.className = "time"; t.textContent = hhmm(ts);
+    who.appendChild(t);
+    const body = document.createElement("span");
+    body.textContent = text;
+    d.append(who, body);
+    messages.appendChild(d); scroll();
+  }
+  function scroll() { messages.scrollTop = messages.scrollHeight; }
+
+  function updateMeta(list) {
+    $("meta").textContent = list.length + (list.length === 1 ? " persona: " : " persone: ") + list.join(", ");
+  }
+  function hostUserList() { return [myName, ...guests.values()]; }
+
+  function openChat() {
+    lobby.style.display = "none";
+    chat.style.display = "flex";
+    $("roomCode").textContent = roomCode;
+    messages.innerHTML = "";
+    $("msgInput").focus();
+  }
+  function closeChat(reason) {
+    try { peer && peer.destroy(); } catch (e) {}
+    peer = null; hostConn = null; guests.clear(); isHost = false;
+    chat.style.display = "none";
+    lobby.style.display = "flex";
+    setBusy(false);
+    showError(reason || "");
+  }
+
+  /* ---------- host ---------- */
+  function broadcast(data, except) {
+    guests.forEach((_, conn) => { if (conn !== except && conn.open) conn.send(data); });
+  }
+  function pushUsers() {
+    const list = hostUserList();
+    updateMeta(list);
+    broadcast({ t: "users", list });
+  }
+
+  function createRoom(attempt) {
+    attempt = attempt || 0;
+    const code = randomCode();
+    const p = new Peer(PREFIX + code);
+    p.on("open", () => {
+      peer = p; isHost = true; roomCode = code;
+      openChat();
+      addSys("Stanza creata. Condividi il codice " + code + " per far entrare altre persone.");
+      updateMeta(hostUserList());
+    });
+    p.on("connection", (conn) => {
+      conn.on("open", () => {
+        if (guests.size + 1 >= MAX_USERS) {
+          conn.send({ t: "full" }); setTimeout(() => conn.close(), 200); return;
+        }
+      });
+      conn.on("data", (d) => onHostData(conn, d));
+      conn.on("close", () => {
+        if (!guests.has(conn)) return;
+        const n = guests.get(conn); guests.delete(conn);
+        addSys(n + " è uscito");
+        broadcast({ t: "sys", text: n + " è uscito" });
+        pushUsers();
+      });
+    });
+    p.on("error", (e) => {
+      if (e.type === "unavailable-id" && attempt < 5) { p.destroy(); createRoom(attempt + 1); return; }
+      if (!peer) { p.destroy(); setBusy(false); showError("Impossibile creare la stanza (" + e.type + "). Riprova."); }
+      else addSys("Errore di rete: " + e.type);
+    });
+  }
+
+  function onHostData(conn, d) {
+    if (!d || typeof d !== "object") return;
+    if (d.t === "hello" && !guests.has(conn)) {
+      let name = cleanName(d.name) || "Ospite";
+      const taken = new Set(hostUserList());
+      let base = name, i = 2;
+      while (taken.has(name)) name = base + " " + i++;
+      guests.set(conn, name);
+      conn.send({ t: "welcome", name, list: hostUserList() });
+      addSys(name + " è entrato");
+      broadcast({ t: "sys", text: name + " è entrato" }, conn);
+      pushUsers();
+    } else if (d.t === "msg" && guests.has(conn)) {
+      const text = String(d.text || "").slice(0, 1000);
+      if (!text.trim()) return;
+      const name = guests.get(conn), ts = Date.now();
+      addMsg(name, text, ts, false);
+      broadcast({ t: "msg", name, text, ts }, conn);
+    }
+  }
+
+  /* ---------- ospite ---------- */
+  function joinRoom(code) {
+    const p = new Peer();
+    let settled = false;
+    const timer = setTimeout(() => fail("Nessuna risposta dalla stanza. Controlla il codice."), 12000);
+    function fail(msg) {
+      if (settled) return; settled = true; clearTimeout(timer);
+      try { p.destroy(); } catch (e) {}
+      setBusy(false); showError(msg);
+    }
+    p.on("open", () => {
+      const conn = p.connect(PREFIX + code, { reliable: true });
+      conn.on("open", () => conn.send({ t: "hello", name: myName }));
+      conn.on("data", (d) => {
+        if (!d || typeof d !== "object") return;
+        if (d.t === "welcome") {
+          settled = true; clearTimeout(timer);
+          peer = p; hostConn = conn; roomCode = code; myName = d.name;
+          openChat(); addSys("Sei nella stanza " + code); updateMeta(d.list || [myName]);
+        } else if (d.t === "full") {
+          fail("La stanza è piena.");
+        } else if (d.t === "msg") {
+          addMsg(String(d.name || "?"), String(d.text || ""), d.ts || Date.now(), false);
+        } else if (d.t === "sys") {
+          addSys(String(d.text || ""));
+        } else if (d.t === "users") {
+          updateMeta(Array.isArray(d.list) ? d.list : []);
+        }
+      });
+      conn.on("close", () => {
+        if (!settled) return fail("Connessione chiusa.");
+        if (peer) closeChat("La stanza è stata chiusa dall'host.");
+      });
+    });
+    p.on("error", (e) => {
+      if (e.type === "peer-unavailable") return fail("Codice non trovato. Controlla e riprova.");
+      if (!peer) return fail("Errore di connessione (" + e.type + ").");
+      addSys("Errore di rete: " + e.type);
+    });
+  }
+
+  /* ---------- eventi UI ---------- */
+  function readName() {
+    const n = cleanName($("nameInput").value);
+    if (!n) { showError("Scrivi prima il tuo nome."); $("nameInput").focus(); return null; }
+    try { localStorage.setItem("stanzachat-name", n); } catch (e) {}
+    return n;
+  }
+  $("createBtn").onclick = () => {
+    const n = readName(); if (!n) return;
+    myName = n; showError(""); setBusy(true); createRoom();
+  };
+  $("joinBtn").onclick = () => {
+    const n = readName(); if (!n) return;
+    const code = $("codeInput").value.trim().toUpperCase();
+    if (code.length !== 6) { showError("Il codice ha 6 caratteri."); $("codeInput").focus(); return; }
+    myName = n; showError(""); setBusy(true); joinRoom(code);
+  };
+  $("codeInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("joinBtn").click(); });
+  $("nameInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("codeInput").value) $("createBtn").click(); else if (e.key === "Enter") $("joinBtn").click(); });
+
+  $("sendForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = $("msgInput");
+    const text = input.value.trim().slice(0, 1000);
+    if (!text) return;
+    const ts = Date.now();
+    addMsg(myName, text, ts, true);
+    if (isHost) broadcast({ t: "msg", name: myName, text, ts });
+    else if (hostConn && hostConn.open) hostConn.send({ t: "msg", text });
+    input.value = "";
+  });
+
+  function copy(text, btn) {
+    const old = btn.textContent;
+    const done = () => { btn.textContent = "Copiato"; setTimeout(() => (btn.textContent = old), 1200); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => {});
+  }
+  $("copyCode").onclick = (e) => copy(roomCode, e.currentTarget);
+  $("copyLink").onclick = (e) => copy(location.origin + location.pathname + "?room=" + roomCode, e.currentTarget);
+  $("leaveBtn").onclick = () => closeChat("");
+  window.addEventListener("beforeunload", () => { try { peer && peer.destroy(); } catch (e) {} });
+
+  /* ---------- avvio ---------- */
+  try { $("nameInput").value = localStorage.getItem("stanzachat-name") || ""; } catch (e) {}
+  const q = new URLSearchParams(location.search).get("room");
+  if (q) $("codeInput").value = q.toUpperCase().slice(0, 6);
+})();
+</script>
+</body>
+</html>
